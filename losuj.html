@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Losuj pytania - Inżynierka Flashcards</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <style>
+    body { background: #f5f7fb; }
+    .flashcard-wrapper { perspective: 1200px; }
+    .flashcard {
+      position: relative;
+      width: 100%;
+      min-height: 240px;
+      transform-style: preserve-3d;
+      transition: transform 0.6s ease;
+    }
+    .flashcard.flipped { transform: rotateY(180deg); }
+    .flashcard-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
+      background: #ffffff;
+      border-radius: 0.85rem;
+      box-shadow: 0 12px 24px rgba(13, 110, 253, 0.08);
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .flashcard-face h5 {
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+    .flashcard-face.back {
+      transform: rotateY(180deg);
+      background: #0d6efd;
+      color: #ffffff;
+    }
+    .scoreboard span { font-weight: 700; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand fw-semibold" href="index.html">Inżynierka Flashcards</a>
+      <div class="navbar-nav ms-auto">
+        <a class="nav-link" href="index.html">Wszystkie pytania</a>
+        <a class="nav-link active" href="losuj.html">Losuj pytania</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-5">
+    <header class="mb-4 text-center">
+      <h1 class="fw-bold mb-2">Losuj pytania</h1>
+      <p class="text-muted mb-0">Wybierz liczbę kart, odwróć, aby sprawdzić odpowiedź i zaznacz wynik.</p>
+    </header>
+
+    <section class="bg-white rounded-3 shadow-sm p-4 mb-4">
+      <form id="drawForm" class="row g-3 align-items-end">
+        <div class="col-12 col-sm-6 col-lg-4">
+          <label for="questionCount" class="form-label fw-semibold">Liczba pytań</label>
+          <input type="number" class="form-control" id="questionCount" min="1" max="130" value="10" required>
+          <div class="form-text" id="availableInfo"></div>
+        </div>
+        <div class="col-12 col-sm-6 col-lg-3">
+          <button type="submit" class="btn btn-primary btn-lg w-100">Rozpocznij</button>
+        </div>
+        <div class="col-12 col-lg-5 text-lg-end">
+          <div class="scoreboard mt-3 mt-lg-0">
+            <span id="correctCount">0</span>/<span id="totalCount">0</span> poprawnych |
+            Postęp: <span id="progressCount">0</span>/<span id="totalCountProgress">0</span>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section id="cardSection" class="d-none">
+      <div class="flashcard-wrapper mb-4">
+        <div id="flashcard" class="flashcard">
+          <article class="flashcard-face front">
+            <h5 class="text-primary text-uppercase">Pytanie</h5>
+            <p id="cardQuestion" class="fs-5 mb-0"></p>
+          </article>
+          <article class="flashcard-face back">
+            <h5 class="text-uppercase">Odpowiedź</h5>
+            <p id="cardAnswer" class="fs-5 mb-0"></p>
+          </article>
+        </div>
+      </div>
+
+      <div class="d-flex flex-column flex-sm-row gap-3 justify-content-center">
+        <button id="flipButton" class="btn btn-outline-primary btn-lg px-4">
+          Odwróć kartę
+        </button>
+        <button id="wrongButton" class="btn btn-danger btn-lg px-4" disabled>
+          ✕ Źle
+        </button>
+        <button id="rightButton" class="btn btn-success btn-lg px-4" disabled>
+          ✓ Dobrze
+        </button>
+      </div>
+
+      <div id="sessionMessage" class="alert alert-info mt-4 d-none" role="alert"></div>
+    </section>
+  </main>
+
+  <footer class="bg-dark text-white-50 py-3">
+    <div class="container text-center small">
+      © <span id="year"></span> Inżynierka Flashcards
+    </div>
+  </footer>
+
+  <script>
+    let questionBank = [];
+    let session = { items: [], total: 0, correct: 0, currentIndex: 0 };
+
+    const drawForm = document.getElementById('drawForm');
+    const questionCountInput = document.getElementById('questionCount');
+    const availableInfo = document.getElementById('availableInfo');
+    const flashcard = document.getElementById('flashcard');
+    const cardQuestion = document.getElementById('cardQuestion');
+    const cardAnswer = document.getElementById('cardAnswer');
+    const wrongButton = document.getElementById('wrongButton');
+    const rightButton = document.getElementById('rightButton');
+    const flipButton = document.getElementById('flipButton');
+    const cardSection = document.getElementById('cardSection');
+    const sessionMessage = document.getElementById('sessionMessage');
+    const correctCount = document.getElementById('correctCount');
+    const totalCount = document.getElementById('totalCount');
+    const totalCountProgress = document.getElementById('totalCountProgress');
+    const progressCount = document.getElementById('progressCount');
+
+    const shuffle = (array) => {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
+
+    async function loadQuestionBank() {
+      const response = await fetch('pytania_inzynierka.json');
+      if (!response.ok) throw new Error('HTTP error');
+      const data = await response.json();
+      return data.questions || [];
+    }
+
+    function resetSessionMessage() {
+      sessionMessage.classList.add('d-none');
+      sessionMessage.classList.remove('alert-success', 'alert-danger');
+      sessionMessage.classList.add('alert-info');
+      sessionMessage.textContent = '';
+    }
+
+    function setupRandomSession(requested) {
+      const count = Math.max(1, Math.min(requested, questionBank.length));
+      session = {
+        items: shuffle(questionBank).slice(0, count),
+        total: count,
+        correct: 0,
+        currentIndex: 0,
+      };
+      resetSessionMessage();
+      cardSection.classList.remove('d-none');
+      updateScoreboard();
+      showCurrentCard();
+    }
+
+    function showCurrentCard() {
+      const current = session.items[session.currentIndex];
+      if (!current) {
+        endSession();
+        return;
+      }
+      flashcard.classList.remove('flipped');
+      cardQuestion.textContent = current.question;
+      cardAnswer.textContent = current.answer;
+      wrongButton.disabled = true;
+      rightButton.disabled = true;
+      flipButton.disabled = false;
+    }
+
+    function handleFlip() {
+      flashcard.classList.toggle('flipped');
+      const flipped = flashcard.classList.contains('flipped');
+      wrongButton.disabled = !flipped;
+      rightButton.disabled = !flipped;
+    }
+
+    function handleAnswer(isCorrect) {
+      if (isCorrect) session.correct += 1;
+      session.currentIndex += 1;
+      updateScoreboard();
+      flashcard.classList.remove('flipped');
+      wrongButton.disabled = true;
+      rightButton.disabled = true;
+      if (session.currentIndex >= session.total) {
+        endSession();
+      } else {
+        showCurrentCard();
+      }
+    }
+
+    function updateScoreboard() {
+      correctCount.textContent = session.correct;
+      totalCount.textContent = session.total;
+      totalCountProgress.textContent = session.total;
+      progressCount.textContent = Math.min(session.currentIndex, session.total);
+    }
+
+    function endSession() {
+      flipButton.disabled = true;
+      wrongButton.disabled = true;
+      rightButton.disabled = true;
+      sessionMessage.classList.remove('d-none');
+      sessionMessage.classList.remove('alert-info');
+      sessionMessage.classList.add('alert-success');
+      sessionMessage.textContent = `Sesja zakończona. Wynik: ${session.correct}/${session.total} poprawnych odpowiedzi.`;
+      progressCount.textContent = session.total;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('year').textContent = new Date().getFullYear();
+      try {
+        questionBank = await loadQuestionBank();
+        questionCountInput.max = questionBank.length || 1;
+        availableInfo.textContent = `Dostępnych pytań: ${questionBank.length}`;
+      } catch (error) {
+        cardSection.classList.add('d-none');
+        sessionMessage.classList.remove('d-none');
+        sessionMessage.classList.remove('alert-info');
+        sessionMessage.classList.add('alert-danger');
+        sessionMessage.textContent = 'Nie udało się załadować pytań. Odśwież stronę.';
+        console.error('Błąd ładowania pytań:', error);
+        drawForm.querySelector('button[type="submit"]').disabled = true;
+        return;
+      }
+
+      drawForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const requested = Number(questionCountInput.value || 1);
+        setupRandomSession(requested);
+      });
+
+      flipButton.addEventListener('click', handleFlip);
+      wrongButton.addEventListener('click', () => handleAnswer(false));
+      rightButton.addEventListener('click', () => handleAnswer(true));
+    });
+  </script>
+</body>
+</html>
