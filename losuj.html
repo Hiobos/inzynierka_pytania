@@ -32,6 +32,10 @@
       font-weight: 700;
       margin-bottom: 1rem;
     }
+    .flashcard-face p {
+      overflow-wrap: anywhere;
+      margin-bottom: 0;
+    }
     .flashcard-face.back {
       transform: rotateY(180deg);
       background: #0d6efd;
@@ -131,6 +135,8 @@
     const totalCount = document.getElementById('totalCount');
     const totalCountProgress = document.getElementById('totalCountProgress');
     const progressCount = document.getElementById('progressCount');
+  const frontFace = document.querySelector('.flashcard-face.front');
+  const backFace = document.querySelector('.flashcard-face.back');
 
     const shuffle = (array) => {
       const arr = [...array];
@@ -181,6 +187,7 @@
       wrongButton.disabled = true;
       rightButton.disabled = true;
       flipButton.disabled = false;
+      requestAnimationFrame(adjustCardHeight);
     }
 
     function handleFlip() {
@@ -188,6 +195,7 @@
       const flipped = flashcard.classList.contains('flipped');
       wrongButton.disabled = !flipped;
       rightButton.disabled = !flipped;
+      requestAnimationFrame(adjustCardHeight);
     }
 
     function handleAnswer(isCorrect) {
@@ -222,6 +230,15 @@
       progressCount.textContent = session.total;
     }
 
+    function adjustCardHeight() {
+      if (!flashcard || !frontFace || !backFace) return;
+      flashcard.style.height = 'auto';
+      const frontHeight = frontFace.scrollHeight;
+      const backHeight = backFace.scrollHeight;
+      const targetHeight = Math.max(frontHeight, backHeight);
+      flashcard.style.height = `${targetHeight}px`;
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('year').textContent = new Date().getFullYear();
       try {
@@ -248,6 +265,7 @@
       flipButton.addEventListener('click', handleFlip);
       wrongButton.addEventListener('click', () => handleAnswer(false));
       rightButton.addEventListener('click', () => handleAnswer(true));
+      window.addEventListener('resize', () => requestAnimationFrame(adjustCardHeight));
     });
   </script>
 </body>
